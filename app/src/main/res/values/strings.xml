@@ -1,3 +1,6 @@
 <resources>
     <string name="app_name">laporbang</string>
+    <string name="login">Login</string>
+    <string name="register">Register</string>
+    <string name="tagline">Jalan Mulus untuk Semua \n Dimulai dari Kamu</string>
 </resources>
