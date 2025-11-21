@@ -1,5 +1,7 @@
 package com.example.laporbang.data.model
 
+import android.content.IntentSender
+
 data class User(
     val uid: String = "",
     val email: String = "",
@@ -9,8 +11,10 @@ data class User(
 )
 
 sealed class AuthResult {
-    data class Success(val user: User) : AuthResult()
+    data class Success(val user: User, val message: String = "Success") : AuthResult()
+
     data class Error(val message: String) : AuthResult()
+
     object Loading : AuthResult()
     object Idle : AuthResult()
 }
@@ -19,6 +23,8 @@ data class LoginRequest(
     val email: String,
     val password: String
 )
+
+
 
 data class RegisterRequest(
     val email: String,
@@ -34,3 +40,9 @@ data class ForgotPasswordRequest(
 data class OTPVerificationRequest(
     val code: String
 )
+
+
+sealed class GoogleSignInResult {
+    data class Success(val intentSender: IntentSender) : GoogleSignInResult()
+    data class Error(val message: String) : GoogleSignInResult()
+}

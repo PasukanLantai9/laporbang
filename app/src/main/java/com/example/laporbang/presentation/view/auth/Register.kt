@@ -1,5 +1,10 @@
 package com.example.laporbang.presentation.view.auth
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,18 +28,22 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -44,20 +53,67 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.laporbang.R
+import com.example.laporbang.presentation.viewmodel.AuthViewModel
+//import com.google.firebase.auth.AuthResult
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.laporbang.data.model.AuthResult
+import com.example.laporbang.data.model.GoogleSignInResult
+import kotlinx.coroutines.launch
 
 @Composable
-@Preview
 fun RegisterScreen(
-    onRegisterClick: () -> Unit = {},
+    viewModel: AuthViewModel = viewModel(),
+    onRegisterSuccess: () -> Unit = {},
     onGoogleRegisterClick: () -> Unit = {},
     onLoginClick: () -> Unit = {},
 ) {
+    val authState by viewModel.authState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val googleAuthClient = remember { GoogleAuthClient(context) }
+
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            scope.launch {
+                val data = result.data
+                if (data != null) {
+                    val token = googleAuthClient.getSignInCredentialFromIntent(data)
+                    if (token != null) {
+                        viewModel.loginWithGoogle(token)
+                    } else {
+                        Toast.makeText(context, "Google Sign In Failed: No Token", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
     val emailState = remember { mutableStateOf("") }
     val phoneState = remember { mutableStateOf("") }
     val passwordState = remember { mutableStateOf("") }
     val confirmPasswordState = remember { mutableStateOf("") }
     val isPasswordVisibleState = remember { mutableStateOf(false) }
     val isConfirmPasswordVisibleState = remember { mutableStateOf(false) }
+    val errorMessage = remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(authState) {
+        when (val result = authState) {
+            is AuthResult.Success -> {
+                onRegisterSuccess()
+                viewModel.resetAuthState()
+            }
+            is AuthResult.Error -> {
+                errorMessage.value = result.message
+                viewModel.resetAuthState()
+            }
+            else -> {}
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -89,8 +145,30 @@ fun RegisterScreen(
                 confirmPasswordState = confirmPasswordState,
                 isPasswordVisibleState = isPasswordVisibleState,
                 isConfirmPasswordVisibleState = isConfirmPasswordVisibleState,
-                onRegisterClick = onRegisterClick,
-                onGoogleRegisterClick = onGoogleRegisterClick,
+                isLoading = authState is AuthResult.Loading,
+                onRegisterClick = {
+                    viewModel.register(
+                        email = emailState.value,
+                        phoneNumber = phoneState.value,
+                        password = passwordState.value,
+                        confirmPassword = confirmPasswordState.value
+                    )
+                },
+                onGoogleRegisterClick = {
+                    scope.launch {
+                        val signInResult = googleAuthClient.signIn()
+                        when (signInResult) {
+                            is GoogleSignInResult.Success -> {
+                                launcher.launch(
+                                    IntentSenderRequest.Builder(signInResult.intentSender).build()
+                                )
+                            }
+                            is GoogleSignInResult.Error -> {
+                                errorMessage.value = signInResult.message
+                            }
+                        }
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             )
 
@@ -99,6 +177,13 @@ fun RegisterScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 40.dp)
+            )
+        }
+
+        if (errorMessage.value != null) {
+            CustomErrorDialog(
+                message = errorMessage.value!!,
+                onDismiss = { errorMessage.value = null }
             )
         }
     }
@@ -140,6 +225,7 @@ fun RegisterFormSection(
     confirmPasswordState: MutableState<String>,
     isPasswordVisibleState: MutableState<Boolean>,
     isConfirmPasswordVisibleState: MutableState<Boolean>,
+    isLoading: Boolean,
     onRegisterClick: () -> Unit,
     onGoogleRegisterClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -237,6 +323,7 @@ fun RegisterFormSection(
 
         Button(
             onClick = onRegisterClick,
+            enabled = !isLoading,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(65.dp)
@@ -248,22 +335,30 @@ fun RegisterFormSection(
                     spotColor = COLORS_PRIMARY.copy(alpha = 0.3f)
                 ),
             colors = ButtonDefaults.buttonColors(
-                containerColor = COLORS_PRIMARY
+                containerColor = if (isLoading) COLORS_SURFACE else COLORS_PRIMARY,
+                disabledContainerColor = COLORS_SURFACE
             ),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text(
-                text = "Sign Up",
-                color = COLORS_BG,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Icon(
-                Icons.Default.ArrowRight,
-                contentDescription = null,
-                tint = COLORS_BG,
-                modifier = Modifier.padding(start = 8.dp).size(20.dp)
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = COLORS_PRIMARY,
+                    modifier = Modifier.size(24.dp)
+                )
+            } else {
+                Text(
+                    text = "Sign Up",
+                    color = COLORS_BG,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Icon(
+                    Icons.Default.ArrowRight,
+                    contentDescription = null,
+                    tint = COLORS_BG,
+                    modifier = Modifier.padding(start = 8.dp).size(20.dp)
+                )
+            }
         }
 
         DividerWithText(text = "Or continue with")
@@ -321,4 +416,9 @@ fun RegisterFooterSection(onLoginClick: () -> Unit, modifier: Modifier = Modifie
             modifier = Modifier.clickable(onClick = onLoginClick)
         )
     }
+}
+@Preview
+@Composable
+fun RegisterScreenPreview() {
+     RegisterScreen()
 }

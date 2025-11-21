@@ -17,6 +17,9 @@ class AuthViewModel(
     private val _authState = MutableStateFlow<AuthResult>(AuthResult.Idle)
     val authState: StateFlow<AuthResult> = _authState.asStateFlow()
 
+    private val _resetPasswordState = MutableStateFlow<AuthResult>(AuthResult.Idle)
+    val resetPasswordState: StateFlow<AuthResult> = _resetPasswordState.asStateFlow()
+
     private val _forgotPasswordState = MutableStateFlow<AuthResult>(AuthResult.Idle)
     val forgotPasswordState: StateFlow<AuthResult> = _forgotPasswordState.asStateFlow()
 
@@ -128,6 +131,53 @@ class AuthViewModel(
                 AuthResult.Error(result.exceptionOrNull()?.message ?: "OTP verification failed")
             }
         }
+    }
+
+    fun confirmPasswordReset(code: String, newPass: String, confirmPass: String) {
+        viewModelScope.launch {
+            _resetPasswordState.value = AuthResult.Loading
+
+            if (newPass.isBlank() || confirmPass.isBlank()) {
+                _resetPasswordState.value = AuthResult.Error("Password cannot be empty")
+                return@launch
+            }
+
+            if (newPass != confirmPass) {
+                _resetPasswordState.value = AuthResult.Error("Passwords do not match")
+                return@launch
+            }
+
+            if (newPass.length < 6) {
+                _resetPasswordState.value = AuthResult.Error("Password too short")
+                return@launch
+            }
+
+            val result = repository.confirmPasswordReset(code, newPass)
+
+            _resetPasswordState.value = if (result.isSuccess) {
+                AuthResult.Success(User()) // User dummy, yang penting sukses
+            } else {
+                AuthResult.Error(result.exceptionOrNull()?.message ?: "Failed to reset password")
+            }
+        }
+    }
+
+
+    fun loginWithGoogle(idToken: String) {
+        viewModelScope.launch {
+            _authState.value = AuthResult.Loading
+            val result = repository.signInWithGoogle(idToken)
+
+            _authState.value = if (result.isSuccess) {
+                AuthResult.Success(result.getOrNull()!!)
+            } else {
+                AuthResult.Error(result.exceptionOrNull()?.message ?: "Google Sign In Failed")
+            }
+        }
+    }
+
+    fun resetResetPasswordState() {
+        _resetPasswordState.value = AuthResult.Idle
     }
 
     fun logout() {

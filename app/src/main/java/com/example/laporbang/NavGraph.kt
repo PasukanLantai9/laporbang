@@ -1,7 +1,10 @@
 package com.example.laporbang
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -10,6 +13,7 @@ import com.example.laporbang.presentation.view.auth.ForgotPasswordScreen
 import com.example.laporbang.presentation.view.auth.LoginScreen
 import com.example.laporbang.presentation.view.auth.OTPVerificationScreen
 import com.example.laporbang.presentation.view.auth.RegisterScreen
+
 @Composable
 fun SetupNavGraph(navController: NavHostController) {
     NavHost(
@@ -19,9 +23,10 @@ fun SetupNavGraph(navController: NavHostController) {
         composable(route = Screen.Splash.route) {
             AnimatedSplashScreen(navController = navController)
         }
+
         composable(route = Screen.Login.route) {
             LoginScreen(
-                onLoginClick = {
+                onLoginSuccess = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -38,7 +43,7 @@ fun SetupNavGraph(navController: NavHostController) {
 
         composable(route = Screen.Register.route) {
             RegisterScreen(
-                onRegisterClick = {
+                onRegisterSuccess = {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -52,7 +57,7 @@ fun SetupNavGraph(navController: NavHostController) {
         composable(route = Screen.ForgotPassword.route) {
             ForgotPasswordScreen(
                 onSendCodeClick = {
-                    navController.navigate(Screen.OTP.route)
+                    navController.popBackStack()
                 },
                 onBackClick = {
                     navController.popBackStack()
@@ -77,11 +82,11 @@ fun SetupNavGraph(navController: NavHostController) {
         }
 
         composable(route = Screen.Home.route) {
-            androidx.compose.foundation.layout.Box(
+            Box(
                 modifier = Modifier.fillMaxSize(),
-                contentAlignment = androidx.compose.ui.Alignment.Center
+                contentAlignment = Alignment.Center
             ) {
-                androidx.compose.material3.Text(text = "Welcome Home!")
+                Text(text = "Welcome Home!")
             }
         }
     }
