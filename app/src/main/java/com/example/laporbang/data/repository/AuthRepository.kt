@@ -1,12 +1,16 @@
 package com.example.laporbang.data.repository
 
 import com.example.laporbang.data.model.User
+import com.google.firebase.auth.ActionCodeSettings
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import com.google.firebase.auth.GoogleAuthProvider
+
+
 class AuthRepository {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     private val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
@@ -66,8 +70,47 @@ class AuthRepository {
 
     suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
         return try {
-            auth.sendPasswordResetEmail(email).await()
+            val actionCodeSettings = ActionCodeSettings.newBuilder()
+                .setUrl("https://laporbang.example.com/reset-password")
+                .setHandleCodeInApp(true)
+                .setAndroidPackageName(
+                    "com.example.laporbang",
+                    true,
+                    null
+                )
+                .build()
+
+            auth.sendPasswordResetEmail(email, actionCodeSettings).await()
             Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun signInWithGoogle(idToken: String): Result<User> {
+        return try {
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+
+            val authResult = auth.signInWithCredential(credential).await()
+            val firebaseUser = authResult.user ?: throw Exception("User not found")
+
+
+            val userDoc = firestore.collection("users").document(firebaseUser.uid).get().await()
+
+            val user = if (userDoc.exists()) {
+                userDoc.toObject(User::class.java)!!
+            } else {
+                val newUser = User(
+                    uid = firebaseUser.uid,
+                    email = firebaseUser.email ?: "",
+                    displayName = firebaseUser.displayName ?: "",
+                    phoneNumber = firebaseUser.phoneNumber ?: ""
+                )
+                firestore.collection("users").document(firebaseUser.uid).set(newUser).await()
+                newUser
+            }
+
+            Result.success(user)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -108,6 +151,15 @@ class AuthRepository {
             )
 
             Result.success(user)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun confirmPasswordReset(code: String, newPassword: String): Result<Unit> {
+        return try {
+            auth.confirmPasswordReset(code, newPassword).await()
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
