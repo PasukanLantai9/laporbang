@@ -9,10 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.example.laporbang.presentation.view.CameraScreen
+import com.example.laporbang.presentation.view.map.MapScreen
 import com.example.laporbang.presentation.view.auth.ForgotPasswordScreen
 import com.example.laporbang.presentation.view.auth.LoginScreen
 import com.example.laporbang.presentation.view.auth.OTPVerificationScreen
 import com.example.laporbang.presentation.view.auth.RegisterScreen
+import com.example.laporbang.presentation.view.map.MapScreen
 
 @Composable
 fun SetupNavGraph(navController: NavHostController) {
@@ -82,12 +85,34 @@ fun SetupNavGraph(navController: NavHostController) {
         }
 
         composable(route = Screen.Home.route) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "Welcome Home!")
-            }
+            MapScreen(
+                onCameraClick = {
+                    navController.navigate(Screen.CreateReport.route)
+                },
+                onNotificationClick = {
+                },
+                onViewAllStats = {
+                }
+            )
+        }
+
+
+        composable(route = Screen.CreateReport.route) {
+            CameraScreen(
+                onBackClick = {
+                    navController.popBackStack()
+                },
+                onCapturePhoto = {
+                },
+                onGalleryClick = {
+                },
+                onSettingsClick = {
+                }
+            )
+        }
+
+        composable(route = Screen.MapScreen.route) {
+            MapScreen()
         }
     }
 }

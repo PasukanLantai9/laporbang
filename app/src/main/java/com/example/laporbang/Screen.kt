@@ -1,13 +1,17 @@
-package com.example.laporbang
+    package com.example.laporbang
 
-sealed class Screen(val route: String) {
-    object Splash : Screen("splash_screen")
-    object Home : Screen("home_screen")
-    object Login : Screen("login_screen")
-    object Register : Screen("register_screen")
-    object ForgotPassword : Screen("forgot_password_screen")
-    object OTP : Screen("otp_screen")
-    object NewPassword : Screen("new_password_screen?code={code}") {
-        fun createRoute(code: String) = "new_password_screen?code=$code"
+    sealed class Screen(val route: String) {
+        object Splash : Screen("splash_screen")
+        object Home : Screen("home_screen")
+        object Login : Screen("login_screen")
+        object Register : Screen("register_screen")
+        object ForgotPassword : Screen("forgot_password_screen")
+        object OTP : Screen("otp_screen")
+        object NewPassword : Screen("new_password_screen?code={code}") {
+            fun createRoute(code: String) = "new_password_screen?code=$code"
+        }
+
+        object MapScreen : Screen("map_screen")
+
+        object CreateReport : Screen("create_report_screen")
     }
-}
