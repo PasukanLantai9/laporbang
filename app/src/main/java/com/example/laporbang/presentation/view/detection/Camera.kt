@@ -1,5 +1,19 @@
-package com.example.laporbang.presentation.view
+package com.example.laporbang.presentation.view.detection
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.location.Geocoder
+import android.net.Uri
+import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,12 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FlashOff
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Loop // Icon untuk flip camera
+import androidx.compose.material.icons.filled.Loop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,88 +40,198 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-// Pastikan import warna sesuai dengan lokasi file kamu
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import com.example.laporbang.presentation.view.auth.COLORS_BG
 import com.example.laporbang.presentation.view.auth.COLORS_INPUT_BORDER
 import com.example.laporbang.presentation.view.auth.COLORS_PRIMARY
 import com.example.laporbang.presentation.view.auth.COLORS_SURFACE
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT_SECONDARY
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Locale
 
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen(
     onBackClick: () -> Unit = {},
-    onCapturePhoto: () -> Unit = {},
-    onGalleryClick: () -> Unit = {},
-    onFlashToggle: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+//    onCapturePhoto: () -> Unit = {},
+    onCapturePhoto: (Double, Double) -> Unit = { _, _ -> },
+    onLocationClick: () -> Unit = {},
+    initialLocation: String? = null
 ) {
-    var isFlashOn by remember { mutableStateOf(false) }
-    // Simulasi lokasi dummy
-    val currentLocation by remember { mutableStateOf("Jl. Sudirman, Jakarta Pusat") }
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
+
+    var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
+    var flashMode by remember { mutableIntStateOf(ImageCapture.FLASH_MODE_OFF) }
+    val imageCapture = remember { ImageCapture.Builder().build() }
+    val previewView = remember { PreviewView(context) }
+
+    var currentLocation by remember { mutableStateOf("Mencari lokasi...") }
+    var currentLat by remember { mutableDoubleStateOf(0.0) }
+    var currentLng by remember { mutableDoubleStateOf(0.0) }
+
+//    var currentLocation by remember { mutableStateOf("Mencari lokasi...") }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+    LaunchedEffect(initialLocation) {
+        if (initialLocation != null) {
+            currentLocation = initialLocation
+        }
+    }
+
+    val permissionsState = rememberMultiplePermissionsState(
+        listOf(
+            Manifest.permission.CAMERA,
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+
+            Log.d("CameraScreen", "Foto dari galeri: $uri")
+        }
+    }
+
+    LaunchedEffect(lensFacing, permissionsState.allPermissionsGranted) {
+        if (permissionsState.allPermissionsGranted) {
+            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+            cameraProviderFuture.addListener({
+                val cameraProvider = cameraProviderFuture.get()
+                val preview = Preview.Builder().build()
+                preview.setSurfaceProvider(previewView.surfaceProvider)
+
+                val cameraSelector = CameraSelector.Builder()
+                    .requireLensFacing(lensFacing)
+                    .build()
+
+                try {
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        lifecycleOwner,
+                        cameraSelector,
+                        preview,
+                        imageCapture
+                    )
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }, ContextCompat.getMainExecutor(context))
+        } else {
+            permissionsState.launchMultiplePermissionRequest()
+        }
+    }
+
+    LaunchedEffect(permissionsState.allPermissionsGranted) {
+        if (permissionsState.allPermissionsGranted && initialLocation == null) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                    if (location != null) {
+                        currentLat = location.latitude
+                        currentLng = location.longitude
+
+                        scope.launch(Dispatchers.IO) {
+                            val geocoder = Geocoder(context, Locale.getDefault())
+                            try {
+                                val addresses = geocoder.getFromLocation(location.latitude, location.longitude, 1)
+                                if (!addresses.isNullOrEmpty()) {
+                                    val address = addresses[0]
+                                    val street = address.thoroughfare ?: address.featureName ?: ""
+                                    val city = address.subAdminArea ?: address.adminArea ?: ""
+                                    withContext(Dispatchers.Main) {
+                                        currentLocation = "$street, $city".trim(',', ' ')
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                withContext(Dispatchers.Main) { currentLocation = "Lokasi tidak dikenali" }
+                            }
+                        }
+                    } else {
+                        currentLocation = "Menunggu sinyal GPS..."
+                    }
+                }
+            } catch (e: SecurityException) {
+                currentLocation = "Izin lokasi ditolak"
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(COLORS_BG) // Gunakan warna background aplikasi
+            .background(Color.Black)
     ) {
-        // 1. Camera Preview (Placeholder Hitam/Gelap biar realistis)
-        CameraPreviewPlaceholder()
+        if (permissionsState.allPermissionsGranted) {
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(COLORS_BG),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Mohon izinkan akses kamera & lokasi", color = Color.White)
+            }
+        }
 
-        // 2. Top Bar (Tombol Back, Flash, Setting)
         CameraTopBar(
             location = currentLocation,
-            isFlashOn = isFlashOn,
+            isFlashOn = flashMode == ImageCapture.FLASH_MODE_ON,
             onBackClick = onBackClick,
             onFlashToggle = {
-                isFlashOn = !isFlashOn
-                onFlashToggle()
+                flashMode = if (flashMode == ImageCapture.FLASH_MODE_OFF) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
+                imageCapture.flashMode = flashMode
             },
-            onSettingsClick = onSettingsClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(top = 16.dp) // Safe area padding
+            onLocationClick = onLocationClick, // Pass callback
+            modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 40.dp)
         )
 
-        // 3. Frame Overlay (Garis putus-putus warna Primary)
+
+        // FRAME OVERLAY
         CameraFrameOverlay(
             modifier = Modifier
                 .align(Alignment.Center)
                 .padding(horizontal = 32.dp)
-                .aspectRatio(1f) // Kotak persegi atau sesuaikan rasio
-                .offset(y = (-50).dp) // Sedikit ke atas biar ga ketutup panel bawah
+                .aspectRatio(1f)
+                .offset(y = (-50).dp)
         )
 
-        // 4. Bottom Section (Panel Kontrol Utama)
         CameraBottomSection(
-            onCaptureClick = onCapturePhoto,
-            onGalleryClick = onGalleryClick,
-            onFlipCameraClick = { /* Flip logic */ },
+            onCaptureClick = {
+                onCapturePhoto(currentLat, currentLng)
+            },
+            onGalleryClick = {
+                galleryLauncher.launch("image/*")
+            },
+            onFlipCameraClick = {
+                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                    CameraSelector.LENS_FACING_FRONT
+                } else {
+                    CameraSelector.LENS_FACING_BACK
+                }
+            },
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.BottomCenter)
-        )
-    }
-}
-
-@Composable
-fun CameraPreviewPlaceholder() {
-    // Placeholder warna abu-abu gelap (simulasi viewfinder mati)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF2D2D2D))
-    ) {
-        Text(
-            text = "Camera Preview",
-            color = Color.Gray,
-            modifier = Modifier.align(Alignment.Center)
         )
     }
 }
@@ -118,89 +242,49 @@ fun CameraTopBar(
     isFlashOn: Boolean,
     onBackClick: () -> Unit,
     onFlashToggle: () -> Unit,
-    onSettingsClick: () -> Unit,
+    onLocationClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        // Row Tombol Atas
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Tombol Back
-            IconButton(
-                onClick = onBackClick,
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-            ) {
-                Icon(
-                    Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = COLORS_TEXT,
-                    modifier = Modifier.size(24.dp)
-                )
+            IconButton(onClick = onBackClick, modifier = Modifier.size(44.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)) {
+                Icon(Icons.Default.ArrowBack, "Back", tint = COLORS_TEXT, modifier = Modifier.size(24.dp))
             }
 
-            // Lokasi (Tengah)
             Surface(
                 color = Color.Black.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(20.dp),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp)
+                    .clickable { onLocationClick() }
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Icon(
-                        Icons.Default.LocationOn,
-                        contentDescription = null,
-                        tint = COLORS_PRIMARY,
-                        modifier = Modifier.size(14.dp)
-                    )
+                    Icon(Icons.Default.LocationOn, null, tint = COLORS_PRIMARY, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = location,
                         fontSize = 12.sp,
                         color = COLORS_TEXT,
-                        maxLines = 1
+                        maxLines = 1,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(Icons.Default.Edit, null, tint = COLORS_TEXT.copy(alpha = 0.7f), modifier = Modifier.size(12.dp)) // Icon pensil
                 }
             }
 
-            // Tombol Kanan (Flash & Settings)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(
-                    onClick = onFlashToggle,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff,
-                        contentDescription = "Flash",
-                        tint = if (isFlashOn) COLORS_PRIMARY else COLORS_TEXT,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-
-                IconButton(
-                    onClick = onSettingsClick,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(Color.Black.copy(alpha = 0.3f), CircleShape)
-                ) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = "Settings",
-                        tint = COLORS_TEXT,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            IconButton(onClick = onFlashToggle, modifier = Modifier.size(44.dp).background(Color.Black.copy(alpha = 0.3f), CircleShape)) {
+                Icon(if (isFlashOn) Icons.Default.FlashOn else Icons.Default.FlashOff, "Flash", tint = if (isFlashOn) COLORS_PRIMARY else COLORS_TEXT, modifier = Modifier.size(20.dp))
             }
         }
     }
@@ -210,43 +294,27 @@ fun CameraTopBar(
 fun CameraFrameOverlay(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val strokeWidth = 3.dp.toPx()
-        val cornerLength = 40.dp.toPx() // Panjang siku sudut
+        val cornerLength = 40.dp.toPx()
         val dashLength = 15.dp.toPx()
         val gapLength = 15.dp.toPx()
-
-        // Warna Primary (Kuning)
         val primaryColor = Color(0xFFF2C94C)
 
-        // 1. Gambar Garis Putus-putus (Border Tipis)
-        val pathEffect = PathEffect.dashPathEffect(
-            intervals = floatArrayOf(dashLength, gapLength),
-            phase = 0f
-        )
+        val pathEffect = PathEffect.dashPathEffect(intervals = floatArrayOf(dashLength, gapLength), phase = 0f)
 
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.5f), // Putih transparan biar tidak dominan
+            color = Color.White.copy(alpha = 0.5f),
             topLeft = Offset.Zero,
             size = size,
             cornerRadius = CornerRadius(16.dp.toPx(), 16.dp.toPx()),
             style = Stroke(width = 2.dp.toPx(), pathEffect = pathEffect)
         )
 
-        // 2. Gambar Siku Sudut (Tebal & Solid warna Primary)
-        val cornerStroke = Stroke(width = strokeWidth * 1.5f)
-
-        // Kiri Atas
         drawLine(primaryColor, Offset(0f, cornerLength), Offset(0f, 0f), strokeWidth = 6.dp.toPx())
         drawLine(primaryColor, Offset(0f, 0f), Offset(cornerLength, 0f), strokeWidth = 6.dp.toPx())
-
-        // Kanan Atas
         drawLine(primaryColor, Offset(size.width - cornerLength, 0f), Offset(size.width, 0f), strokeWidth = 6.dp.toPx())
         drawLine(primaryColor, Offset(size.width, 0f), Offset(size.width, cornerLength), strokeWidth = 6.dp.toPx())
-
-        // Kiri Bawah
         drawLine(primaryColor, Offset(0f, size.height - cornerLength), Offset(0f, size.height), strokeWidth = 6.dp.toPx())
         drawLine(primaryColor, Offset(0f, size.height), Offset(cornerLength, size.height), strokeWidth = 6.dp.toPx())
-
-        // Kanan Bawah
         drawLine(primaryColor, Offset(size.width - cornerLength, size.height), Offset(size.width, size.height), strokeWidth = 6.dp.toPx())
         drawLine(primaryColor, Offset(size.width, size.height - cornerLength), Offset(size.width, size.height), strokeWidth = 6.dp.toPx())
     }
@@ -262,84 +330,32 @@ fun CameraBottomSection(
     Column(
         modifier = modifier
             .background(
-                COLORS_BG.copy(alpha = 0.95f), // Semi transparan agar menyatu
+                COLORS_BG.copy(alpha = 0.9f),
                 RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
             )
             .padding(bottom = 32.dp, top = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Judul & Instruksi
-        Text(
-            text = "Foto Jalan Berlubang",
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            color = COLORS_TEXT
-        )
+        Text(text = "Foto Jalan Berlubang", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = COLORS_TEXT)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Pastikan lubang terlihat jelas dalam kotak area.",
-            fontSize = 12.sp,
-            color = COLORS_TEXT_SECONDARY,
-            textAlign = TextAlign.Center
-        )
-
+        Text(text = "Pastikan lubang terlihat jelas dalam kotak area.", fontSize = 12.sp, color = COLORS_TEXT_SECONDARY, textAlign = TextAlign.Center)
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Row Tombol Kontrol
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 1. Tombol Galeri (Kiri)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = onGalleryClick,
-                modifier = Modifier
-                    .size(50.dp)
-                    .background(COLORS_SURFACE, CircleShape)
-                    .border(1.dp, COLORS_INPUT_BORDER, CircleShape)
+                modifier = Modifier.size(50.dp).background(COLORS_SURFACE, CircleShape).border(1.dp, COLORS_INPUT_BORDER, CircleShape)
             ) {
-                Icon(
-                    Icons.Default.Image,
-                    contentDescription = "Gallery",
-                    tint = COLORS_TEXT,
-                    modifier = Modifier.size(24.dp)
-                )
+                Icon(Icons.Default.Image, "Gallery", tint = COLORS_TEXT, modifier = Modifier.size(24.dp))
             }
-
-            // 2. Tombol Shutter (Tengah - Besar)
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(84.dp)
-                    .border(4.dp, COLORS_TEXT.copy(alpha = 0.2f), CircleShape) // Ring luar tipis
-                    .padding(6.dp) // Jarak antara ring dan tombol
-                    .clip(CircleShape)
-                    .background(COLORS_PRIMARY) // Warna Kuning
-                    .clickable(onClick = onCaptureClick)
-            ) {
-                Icon(
-                    Icons.Default.CameraAlt,
-                    contentDescription = "Capture",
-                    tint = COLORS_BG, // Icon warna gelap biar kontras
-                    modifier = Modifier.size(36.dp)
-                )
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(84.dp).border(4.dp, COLORS_TEXT.copy(alpha = 0.2f), CircleShape).padding(6.dp).clip(CircleShape).background(COLORS_PRIMARY).clickable(onClick = onCaptureClick)) {
+                Icon(Icons.Default.CameraAlt, "Capture", tint = COLORS_BG, modifier = Modifier.size(36.dp))
             }
-
-            // 3. Tombol Flip Camera (Kanan)
             IconButton(
                 onClick = onFlipCameraClick,
-                modifier = Modifier
-                    .size(50.dp)
-                    .background(COLORS_SURFACE, CircleShape)
-                    .border(1.dp, COLORS_INPUT_BORDER, CircleShape)
+                modifier = Modifier.size(50.dp).background(COLORS_SURFACE, CircleShape).border(1.dp, COLORS_INPUT_BORDER, CircleShape)
             ) {
-                Icon(
-                    Icons.Default.Loop, // Gunakan icon Loop/Refresh untuk flip
-                    contentDescription = "Flip Camera",
-                    tint = COLORS_TEXT,
-                    modifier = Modifier.size(24.dp)
-                )
+                Icon(Icons.Default.Loop, "Flip Camera", tint = COLORS_TEXT, modifier = Modifier.size(24.dp))
             }
         }
     }

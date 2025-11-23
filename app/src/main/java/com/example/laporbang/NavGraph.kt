@@ -1,21 +1,22 @@
 package com.example.laporbang
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.example.laporbang.presentation.view.CameraScreen
+import androidx.navigation.navArgument
+import androidx.navigation.NavType
 import com.example.laporbang.presentation.view.map.MapScreen
+import com.example.laporbang.presentation.view.map.ReportDetailScreen
 import com.example.laporbang.presentation.view.auth.ForgotPasswordScreen
 import com.example.laporbang.presentation.view.auth.LoginScreen
 import com.example.laporbang.presentation.view.auth.OTPVerificationScreen
 import com.example.laporbang.presentation.view.auth.RegisterScreen
-import com.example.laporbang.presentation.view.map.MapScreen
+import com.example.laporbang.presentation.view.detection.CameraScreen
+import com.example.laporbang.presentation.view.detection.DetectionResultScreen
+import com.example.laporbang.presentation.view.detection.LocationPickerScreen
+import com.example.laporbang.presentation.view.detection.ReportSuccessScreen
+import com.example.laporbang.presentation.view.map.ReportListScreen
 
 @Composable
 fun SetupNavGraph(navController: NavHostController) {
@@ -23,6 +24,7 @@ fun SetupNavGraph(navController: NavHostController) {
         navController = navController,
         startDestination = Screen.Splash.route
     ) {
+        // --- SPLASH & AUTH ---
         composable(route = Screen.Splash.route) {
             AnimatedSplashScreen(navController = navController)
         }
@@ -34,13 +36,9 @@ fun SetupNavGraph(navController: NavHostController) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onGoogleLoginClick = { /* TODO */ },
-                onSignUpClick = {
-                    navController.navigate(Screen.Register.route)
-                },
-                onForgetPassword = {
-                    navController.navigate(Screen.ForgotPassword.route)
-                }
+                onGoogleLoginClick = { /* Handle inside LoginScreen */ },
+                onSignUpClick = { navController.navigate(Screen.Register.route) },
+                onForgetPassword = { navController.navigate(Screen.ForgotPassword.route) }
             )
         }
 
@@ -51,20 +49,14 @@ fun SetupNavGraph(navController: NavHostController) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onLoginClick = {
-                    navController.popBackStack()
-                }
+                onLoginClick = { navController.popBackStack() }
             )
         }
 
         composable(route = Screen.ForgotPassword.route) {
             ForgotPasswordScreen(
-                onSendCodeClick = {
-                    navController.popBackStack()
-                },
-                onBackClick = {
-                    navController.popBackStack()
-                }
+                onSendCodeClick = { navController.popBackStack() },
+                onBackClick = { navController.popBackStack() }
             )
         }
 
@@ -76,43 +68,149 @@ fun SetupNavGraph(navController: NavHostController) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 },
-                onResendClick = {
-                },
-                onBackClick = {
-                    navController.popBackStack()
-                }
+                onResendClick = { },
+                onBackClick = { navController.popBackStack() }
             )
         }
 
-        composable(route = Screen.Home.route) {
+
+
+        composable(
+            route = Screen.Home.route,
+            arguments = listOf(
+                navArgument("reportId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val focusId = backStackEntry.arguments?.getString("reportId")
             MapScreen(
-                onCameraClick = {
-                    navController.navigate(Screen.CreateReport.route)
+                onCameraClick = { navController.navigate(Screen.CreateReport.route) },
+                onNotificationClick = { },
+                onViewAllStats = { navController.navigate(Screen.ReportList.route) },
+
+                onReportClick = { reportId ->
+                    navController.navigate(Screen.ReportDetail.createRoute(reportId))
                 },
-                onNotificationClick = {
-                },
-                onViewAllStats = {
+
+                reportIdToFocus = focusId
+            )
+        }
+
+        composable(route = Screen.ReportList.route) {
+            ReportListScreen(
+                onBackClick = { navController.popBackStack() },
+                onItemClick = { reportId ->
+                    navController.navigate(Screen.ReportDetail.createRoute(reportId))
                 }
             )
         }
 
+        composable(
+            route = Screen.ReportDetail.route,
+            arguments = listOf(navArgument("reportId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val reportId = backStackEntry.arguments?.getString("reportId") ?: ""
 
-        composable(route = Screen.CreateReport.route) {
+            ReportDetailScreen(
+                reportId = reportId,
+                onBackClick = { navController.popBackStack() },
+
+                onViewOnMapClick = {
+                    navController.navigate(Screen.Home.createRoute(reportId)) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(route = Screen.CreateReport.route) { backStackEntry ->
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val selectedLocation = savedStateHandle.get<String>("location_address")
+
+
             CameraScreen(
-                onBackClick = {
-                    navController.popBackStack()
+                onBackClick = { navController.popBackStack() },
+
+                // UPDATE DISINI: Menerima lat, lng dari CameraScreen
+                onCapturePhoto = { lat, lng ->
+                    val lokasiNama = selectedLocation ?: "Lokasi Saat Ini"
+
+                    // Simpan data Lat/Lng ASLI ke SavedStateHandle
+                    navController.currentBackStackEntry?.savedStateHandle?.set("lat", lat)
+                    navController.currentBackStackEntry?.savedStateHandle?.set("lng", lng)
+
+                    // Pindah ke layar deteksi
+                    navController.navigate(Screen.DetectionResult.createRoute(lokasiNama))
                 },
-                onCapturePhoto = {
-                },
-                onGalleryClick = {
-                },
-                onSettingsClick = {
+                onLocationClick = { navController.navigate(Screen.LocationPicker.route) },
+                initialLocation = selectedLocation
+            )
+        }
+
+        composable(
+            route = Screen.DetectionResult.route,
+            arguments = listOf(navArgument("location") { defaultValue = "" })
+        ) { backStackEntry ->
+            val initialLocation = backStackEntry.arguments?.getString("location") ?: ""
+
+            val lat = navController.previousBackStackEntry?.savedStateHandle?.get<Double>("lat") ?: 0.0
+            val lng = navController.previousBackStackEntry?.savedStateHandle?.get<Double>("lng") ?: 0.0
+
+            val savedStateHandle = backStackEntry.savedStateHandle
+            val updatedLocation = savedStateHandle.get<String>("location_address")
+            val updatedLat = savedStateHandle.get<Double>("location_lat")
+            val updatedLng = savedStateHandle.get<Double>("location_lng")
+
+            val finalLocation = updatedLocation ?: initialLocation
+            val finalLat = updatedLat ?: lat
+            val finalLng = updatedLng ?: lng
+
+            DetectionResultScreen(
+                initialLocation = finalLocation,
+                initialLat = finalLat,
+                initialLng = finalLng,
+                onBackClick = { navController.popBackStack() },
+                onChangeLocationClick = { navController.navigate(Screen.LocationPicker.route) },
+                onUploadSuccess = {
+                    navController.navigate(Screen.ReportSuccess.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
                 }
             )
         }
 
-        composable(route = Screen.MapScreen.route) {
-            MapScreen()
+        // 3. Location Picker
+        composable(route = Screen.LocationPicker.route) {
+            LocationPickerScreen(
+                onBackClick = { navController.popBackStack() },
+                onLocationSelected = { address, lat, lng ->
+
+                    navController.previousBackStackEntry?.savedStateHandle?.set("location_address", address)
+                    navController.previousBackStackEntry?.savedStateHandle?.set("location_lat", lat)
+                    navController.previousBackStackEntry?.savedStateHandle?.set("location_lng", lng)
+                    navController.popBackStack()
+                }
+            )
         }
+
+        composable(route = Screen.ReportSuccess.route) {
+            ReportSuccessScreen(
+                onBackToMap = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Home.route) { inclusive = true }
+                    }
+                },
+                onCreateNewReport = {
+                    navController.navigate(Screen.CreateReport.route) {
+                        popUpTo(Screen.Home.route) { inclusive = false }
+                    }
+                }
+            )
+        }
+
+        composable(route = Screen.MapScreen.route) { MapScreen() }
     }
 }

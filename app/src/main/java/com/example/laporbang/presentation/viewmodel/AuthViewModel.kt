@@ -155,7 +155,7 @@ class AuthViewModel(
             val result = repository.confirmPasswordReset(code, newPass)
 
             _resetPasswordState.value = if (result.isSuccess) {
-                AuthResult.Success(User()) // User dummy, yang penting sukses
+                AuthResult.Success(User())
             } else {
                 AuthResult.Error(result.exceptionOrNull()?.message ?: "Failed to reset password")
             }
