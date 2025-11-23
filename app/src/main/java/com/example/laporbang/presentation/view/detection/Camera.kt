@@ -247,7 +247,6 @@ fun CameraTopBar(
                 Icon(Icons.Default.ArrowBack, "Back", tint = COLORS_TEXT, modifier = Modifier.size(24.dp))
             }
 
-            // TOMBOL LOKASI (Bisa diklik)
             Surface(
                 color = Color.Black.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(20.dp),

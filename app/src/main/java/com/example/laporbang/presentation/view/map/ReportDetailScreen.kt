@@ -10,29 +10,44 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.laporbang.data.model.ReportStatus
 import com.example.laporbang.presentation.view.auth.COLORS_BG
 import com.example.laporbang.presentation.view.auth.COLORS_PRIMARY
 import com.example.laporbang.presentation.view.auth.COLORS_SURFACE
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT_SECONDARY
 import com.example.laporbang.presentation.view.map.STATUS_RED
+import com.example.laporbang.presentation.view.map.STATUS_YELLOW
+import com.example.laporbang.presentation.view.map.STATUS_GREEN
+import com.example.laporbang.presentation.viewmodel.ReportDetailViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportDetailScreen(
     reportId: String,
     onBackClick: () -> Unit,
-    onViewOnMapClick: () -> Unit = {}
+    onViewOnMapClick: () -> Unit = {},
+    viewModel: ReportDetailViewModel = viewModel()
 ) {
+    LaunchedEffect(reportId) {
+        viewModel.getReport(reportId)
+    }
+
+    val report by viewModel.report.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -51,166 +66,143 @@ fun ReportDetailScreen(
             )
         },
         bottomBar = {
-            Surface(
-                color = COLORS_SURFACE,
-                shadowElevation = 16.dp,
-                shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+            if (report != null) {
+                Surface(
+                    color = COLORS_SURFACE,
+                    shadowElevation = 16.dp,
+                    shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = { /* Share Logic */ },
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = COLORS_TEXT)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Bagikan")
-                    }
-
-                    // --- TOMBOL LIHAT POSISI (UPDATED) ---
-                    Button(
-                        onClick = onViewOnMapClick,
-                        modifier = Modifier.weight(1f).height(50.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)) // Biru Maps
-                    ) {
-                        Icon(Icons.Default.Map, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Lihat Posisi", color = Color.White)
+                        OutlinedButton(
+                            onClick = { /* Share Logic */ },
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = COLORS_TEXT)
+                        ) {
+                            Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Bagikan")
+                        }
+                        Button(
+                            onClick = onViewOnMapClick,
+                            modifier = Modifier.weight(1f).height(50.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6))
+                        ) {
+                            Icon(Icons.Default.Map, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Lihat Posisi", color = Color.White)
+                        }
                     }
                 }
             }
         },
         containerColor = COLORS_BG
     ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
-            // 1. Gambar Laporan Besar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color.Gray) // Placeholder Image
-            ) {
-                // Nanti ganti dengan Image dari URL
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery),
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.align(Alignment.Center).size(48.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 2. Status & ID
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Status Laporan", color = COLORS_TEXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Surface(
-                    color = STATUS_RED.copy(alpha = 0.2f),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Text(
-                        text = "Belum Ditangani",
-                        color = STATUS_RED,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            DetailInfoCard(
-                title = "ID Laporan",
-                content = "#RPT-2024-00$reportId"
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 3. Lokasi
-            DetailInfoCard(
-                icon = Icons.Default.LocationOn,
-                title = "Lokasi",
-                content = "Jl. Jenderal Sudirman No. 45, Kec. Menteng, Jakarta Pusat, DKI Jakarta 10310"
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 4. Tanggal & Waktu
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(modifier = Modifier.weight(1f)) {
-                    DetailInfoCard(icon = Icons.Default.CalendarToday, title = "Tanggal", content = "15 Nov 2024")
-                }
-                Box(modifier = Modifier.weight(1f)) {
-                    DetailInfoCard(icon = Icons.Default.AccessTime, title = "Waktu", content = "14:30 WIB")
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 5. Deskripsi
-            Card(
-                colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Deskripsi", color = COLORS_TEXT, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Lubang berukuran sedang di tengah jalan dengan kedalaman sekitar 15cm. Berpotensi membahayakan pengendara motor dan mobil yang melintas.",
-                        color = COLORS_TEXT_SECONDARY,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 6. Pelapor
-            Card(
-                colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            if (isLoading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = COLORS_PRIMARY)
+            } else if (report != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp)
                 ) {
                     Box(
-                        modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.LightGray)
-                    ) // Avatar Placeholder
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text("Pelapor", fontSize = 12.sp, color = COLORS_TEXT_SECONDARY)
-                        Text("Ahmad Rizki", fontWeight = FontWeight.Bold, color = COLORS_TEXT)
-                        Text("Warga Jakarta Pusat", fontSize = 12.sp, color = COLORS_TEXT_SECONDARY)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color.Gray)
+                    ) {
+                        Icon(
+                            painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery),
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.align(Alignment.Center).size(48.dp)
+                        )
                     }
-                }
-            }
 
-            Spacer(modifier = Modifier.height(80.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    // Status
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Status Laporan", color = COLORS_TEXT, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        val (color, text) = when(report!!.status) {
+                            ReportStatus.BELUM_DITANGANI -> STATUS_RED to "Belum Ditangani"
+                            ReportStatus.DALAM_PROSES -> STATUS_YELLOW to "Dalam Proses"
+                            ReportStatus.SELESAI -> STATUS_GREEN to "Selesai"
+                        }
+                        Surface(color = color.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp)) {
+                            Text(text, color = color, fontWeight = FontWeight.Bold, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    DetailInfoCard(
+                        title = "ID Laporan",
+                        content = "#${report!!.id.take(8).uppercase()}"
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    DetailInfoCard(
+                        icon = Icons.Default.LocationOn,
+                        title = "Lokasi",
+                        content = report!!.address
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.weight(1f)) {
+                            DetailInfoCard(
+                                icon = Icons.Default.CalendarToday,
+                                title = "Tanggal",
+                                content = report!!.getFormattedDate()
+                            )
+                        }
+                        Box(Modifier.weight(1f)) {
+                            DetailInfoCard(
+                                icon = Icons.Default.AccessTime,
+                                title = "Waktu",
+                                content = report!!.getFormattedTime()
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Card(colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Deskripsi", color = COLORS_TEXT, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(report!!.description, color = COLORS_TEXT_SECONDARY, fontSize = 14.sp, lineHeight = 20.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Card(colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.LightGray))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("Pelapor", fontSize = 12.sp, color = COLORS_TEXT_SECONDARY)
+                                Text(report!!.reporterName.ifEmpty { "Anonim" }, fontWeight = FontWeight.Bold, color = COLORS_TEXT)
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(80.dp))
+                }
+            } else {
+                Text("Laporan tidak ditemukan", color = Color.Red, modifier = Modifier.align(Alignment.Center))
+            }
         }
     }
 }
@@ -221,17 +213,15 @@ fun DetailInfoCard(
     title: String,
     content: String
 ) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE),
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.Top
-        ) {
+    Card(colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
             if (icon != null) {
-                Icon(icon, null, tint = COLORS_PRIMARY, modifier = Modifier.size(20.dp))
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = COLORS_PRIMARY,
+                    modifier = Modifier.size(20.dp)
+                )
                 Spacer(modifier = Modifier.width(12.dp))
             }
             Column {
