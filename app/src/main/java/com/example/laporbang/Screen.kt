@@ -14,4 +14,13 @@
         object MapScreen : Screen("map_screen")
 
         object CreateReport : Screen("create_report_screen")
+        object LocationPicker : Screen("location_picker_screen")
+        object DetectionResult : Screen("detection_result_screen?location={location}") {
+            fun createRoute(location: String) = "detection_result_screen?location=$location"
+        }
+        object ReportSuccess : Screen("report_success_screen")
+        object ReportList : Screen("report_list_screen")
+        object ReportDetail : Screen("report_detail_screen/{reportId}") {
+            fun createRoute(reportId: String) = "report_detail_screen/$reportId"
+        }
     }

@@ -3,6 +3,9 @@ package com.example.laporbang.presentation.view.map
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -10,7 +13,10 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.*
@@ -45,7 +51,8 @@ data class ReportMarker(
     val id: String,
     val position: LatLng,
     val status: ReportStatus,
-    val title: String = ""
+    val title: String = "",
+    val address: String = "" // Tambahan alamat untuk popup
 )
 
 enum class ReportStatus {
@@ -63,9 +70,14 @@ val STATUS_GREEN = Color(0xFF69F0AE)
 fun MapScreen(
     onCameraClick: () -> Unit = {},
     onNotificationClick: () -> Unit = {},
-    onViewAllStats: () -> Unit = {}
+    onViewAllStats: () -> Unit = {},
+    onReportClick: (String) -> Unit = {},
+    reportIdToFocus: String? = null // Parameter untuk deep link dari Detail
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
+
+    var selectedMarker by remember { mutableStateOf<ReportMarker?>(null) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -82,11 +94,11 @@ fun MapScreen(
 
     val markers = remember {
         listOf(
-            ReportMarker("1", LatLng(-7.9666, 112.6326), ReportStatus.BELUM_DITANGANI, "Jl. Ijen"),
-            ReportMarker("2", LatLng(-7.9556, 112.6146), ReportStatus.BELUM_DITANGANI, "Jl. Soekarno Hatta"),
-            ReportMarker("3", LatLng(-7.9756, 112.6426), ReportStatus.SELESAI, "Alun-alun"),
-            ReportMarker("4", LatLng(-7.9456, 112.6226), ReportStatus.SELESAI, "Lowokwaru"),
-            ReportMarker("5", LatLng(-7.9856, 112.6526), ReportStatus.DALAM_PROSES, "Sukun")
+            ReportMarker("1", LatLng(-7.9666, 112.6326), ReportStatus.BELUM_DITANGANI, "Lubang Jl. Ijen", "Jl. Ijen No. 12, Malang"),
+            ReportMarker("2", LatLng(-7.9556, 112.6146), ReportStatus.BELUM_DITANGANI, "Aspal Rusak Suhat", "Jl. Soekarno Hatta, Malang"),
+            ReportMarker("3", LatLng(-7.9756, 112.6426), ReportStatus.SELESAI, "Perbaikan Alun-alun", "Alun-alun Kota Malang"),
+            ReportMarker("4", LatLng(-7.9456, 112.6226), ReportStatus.SELESAI, "Jalan Berlubang Lowokwaru", "Kec. Lowokwaru, Malang"),
+            ReportMarker("5", LatLng(-7.9856, 112.6526), ReportStatus.DALAM_PROSES, "Perbaikan Sukun", "Sukun, Malang")
         )
     }
 
@@ -125,8 +137,19 @@ fun MapScreen(
         position = CameraPosition.fromLatLngZoom(defaultLocation, 13f)
     }
 
-    LaunchedEffect(Unit) {
-        locationPermissionsState.launchMultiplePermissionRequest()
+    // Effect untuk memindahkan kamera jika ada reportIdToFocus (dari Detail Screen)
+    LaunchedEffect(reportIdToFocus) {
+        if (reportIdToFocus != null) {
+            val targetReport = markers.find { it.id == reportIdToFocus }
+            if (targetReport != null) {
+                selectedMarker = targetReport // Buka popup otomatis
+                cameraPositionState.animate(
+                    CameraUpdateFactory.newLatLngZoom(targetReport.position, 17f)
+                )
+            }
+        } else {
+            locationPermissionsState.launchMultiplePermissionRequest()
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -134,7 +157,11 @@ fun MapScreen(
             modifier = Modifier.fillMaxSize(),
             cameraPositionState = cameraPositionState,
             properties = mapProperties,
-            uiSettings = mapUiSettings
+            uiSettings = mapUiSettings,
+            onMapClick = {
+                // Klik peta kosong = tutup popup
+                selectedMarker = null
+            }
         ) {
             filteredMarkers.forEach { marker ->
                 val hue = when (marker.status) {
@@ -145,100 +172,225 @@ fun MapScreen(
                 Marker(
                     state = MarkerState(position = marker.position),
                     title = marker.title,
-                    icon = BitmapDescriptorFactory.defaultMarker(hue)
+                    icon = BitmapDescriptorFactory.defaultMarker(hue),
+                    onClick = {
+                        // Klik marker = buka popup (ganti marker lain otomatis menutup yg lama)
+                        selectedMarker = marker
+                        // Return true agar tidak memindahkan kamera default/menampilkan info window bawaan
+                        false
+                    }
                 )
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .systemBarsPadding()
-                .padding(top = 16.dp)
+        // UI Atas (Header & Filter) - Disembunyikan jika Popup muncul agar bersih
+        AnimatedVisibility(
+            visible = selectedMarker == null,
+            modifier = Modifier.align(Alignment.TopCenter)
         ) {
-            MapHeader(
-                onNotificationClick = onNotificationClick,
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-            )
+                    .systemBarsPadding()
+                    .padding(top = 16.dp)
+            ) {
+                MapHeader(
+                    onNotificationClick = onNotificationClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
+                )
 
-            Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-            MapFilterTabs(
-                selectedTab = selectedTab,
-                onTabSelected = { selectedTab = it },
-                modifier = Modifier.fillMaxWidth()
-            )
+                MapFilterTabs(
+                    selectedTab = selectedTab,
+                    onTabSelected = { selectedTab = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
 
+        // UI Bawah (FABs & Stats)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(16.dp)
                 .systemBarsPadding()
         ) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                FloatingActionButton(
-                    onClick = {
-                        if (ActivityCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.ACCESS_FINE_LOCATION
-                            ) == PackageManager.PERMISSION_GRANTED
-                        ) {
-                            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-                                if (location != null) {
-                                    scope.launch {
-                                        cameraPositionState.animate(
-                                            CameraUpdateFactory.newLatLngZoom(
-                                                LatLng(location.latitude, location.longitude),
-                                                17f
+            // Tampilkan kontrol normal jika tidak ada marker yang dipilih
+            if (selectedMarker == null) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    FloatingActionButton(
+                        onClick = {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                                    if (location != null) {
+                                        scope.launch {
+                                            cameraPositionState.animate(
+                                                CameraUpdateFactory.newLatLngZoom(
+                                                    LatLng(location.latitude, location.longitude),
+                                                    17f
+                                                )
                                             )
-                                        )
+                                        }
                                     }
                                 }
+                            } else {
+                                locationPermissionsState.launchMultiplePermissionRequest()
                             }
-                        } else {
-                            locationPermissionsState.launchMultiplePermissionRequest()
-                        }
-                    },
-                    containerColor = COLORS_SURFACE,
-                    contentColor = COLORS_PRIMARY,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "My Location")
-                }
+                        },
+                        containerColor = COLORS_SURFACE,
+                        contentColor = COLORS_PRIMARY,
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "My Location")
+                    }
 
-                FloatingActionButton(
-                    onClick = onCameraClick,
-                    containerColor = COLORS_PRIMARY,
-                    contentColor = COLORS_BG,
-                    modifier = Modifier.size(64.dp)
-                ) {
-                    Icon(
-                        Icons.Default.CameraAlt,
-                        contentDescription = "Take Photo",
-                        modifier = Modifier.size(28.dp)
+                    FloatingActionButton(
+                        onClick = onCameraClick,
+                        containerColor = COLORS_PRIMARY,
+                        contentColor = COLORS_BG,
+                        modifier = Modifier.size(64.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CameraAlt,
+                            contentDescription = "Take Photo",
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    MapStatisticsCard(
+                        belumCount = statsData["Belum"] ?: 0,
+                        prosesCount = statsData["Proses"] ?: 0,
+                        selesaiCount = statsData["Selesai"] ?: 0,
+                        onViewAll = onViewAllStats,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
-
-                MapStatisticsCard(
-                    belumCount = statsData["Belum"] ?: 0,
-                    prosesCount = statsData["Proses"] ?: 0,
-                    selesaiCount = statsData["Selesai"] ?: 0,
-                    onViewAll = onViewAllStats,
-                    modifier = Modifier.fillMaxWidth()
+            } else {
+                MapReportPopup(
+                    report = selectedMarker!!,
+                    onClose = { selectedMarker = null },
+                    onDetailClick = {
+                        onReportClick(selectedMarker!!.id)
+                    }
                 )
             }
         }
     }
 }
 
+@Composable
+fun MapReportPopup(
+    report: ReportMarker,
+    onClose: () -> Unit,
+    onDetailClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(16.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp)),
+        color = COLORS_SURFACE,
+        contentColor = COLORS_TEXT
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Header Popup (Judul & Close Button)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    // Status Chip Kecil
+                    val (statusColor, statusText) = when (report.status) {
+                        ReportStatus.BELUM_DITANGANI -> STATUS_RED to "Belum Ditangani"
+                        ReportStatus.DALAM_PROSES -> STATUS_YELLOW to "Dalam Proses"
+                        ReportStatus.SELESAI -> STATUS_GREEN to "Selesai"
+                    }
 
+                    Surface(
+                        color = statusColor.copy(alpha = 0.2f),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = statusText,
+                            color = statusColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    Text(
+                        text = report.title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = COLORS_TEXT
+                    )
+                }
+
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(Color.White.copy(alpha = 0.1f), CircleShape)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = COLORS_TEXT_SECONDARY,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Alamat / Koordinat
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.LocationOn,
+                    contentDescription = null,
+                    tint = COLORS_PRIMARY,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = report.address.ifEmpty { "Lat: ${report.position.latitude}, Lng: ${report.position.longitude}" },
+                    fontSize = 13.sp,
+                    color = COLORS_TEXT_SECONDARY,
+                    maxLines = 2
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // TOMBOL LIHAT DETAIL (Aktif)
+            Button(
+                onClick = onDetailClick, // Panggil aksi navigasi
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = COLORS_PRIMARY)
+            ) {
+                Text("Lihat Detail", color = COLORS_BG, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(8.dp))
+                Icon(Icons.Default.ArrowForward, null, tint = COLORS_BG, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
+}
+
+// ... (Header, FilterTabs, StatisticsCard TETAP SAMA, copy dari kode sebelumnya) ...
 @Composable
 fun MapHeader(
     onNotificationClick: () -> Unit,
