@@ -2,6 +2,7 @@ package com.example.laporbang.presentation.view.map
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,15 +25,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-// IMPORT PENTING: Menggunakan Model Asli
 import com.example.laporbang.data.model.Report
 import com.example.laporbang.data.model.ReportStatus
 import com.example.laporbang.presentation.view.auth.COLORS_BG
+import com.example.laporbang.presentation.view.auth.COLORS_INPUT_BORDER
 import com.example.laporbang.presentation.view.auth.COLORS_PRIMARY
 import com.example.laporbang.presentation.view.auth.COLORS_SURFACE
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT_SECONDARY
-import com.example.laporbang.presentation.view.auth.COLORS_INPUT_BORDER
 import com.example.laporbang.presentation.viewmodel.MapViewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -60,6 +60,15 @@ fun MapScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val selectedTab by viewModel.selectedTab.collectAsState()
+    val reportList = uiState.filteredReports
+
+    // Debugging: Cek apakah data masuk
+    LaunchedEffect(reportList) {
+        Log.d("MapScreen", "Jumlah laporan yang diterima: ${reportList.size}")
+        reportList.forEach {
+            Log.d("MapScreen", "Item: ${it.title}, Lat: ${it.getLat()}, Lng: ${it.getLng()}")
+        }
+    }
 
     var selectedMarker by remember { mutableStateOf<Report?>(null) }
 
@@ -70,23 +79,37 @@ fun MapScreen(
         listOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
     )
 
+    // Lokasi Default (Jakarta)
     val defaultLocation = LatLng(-6.2088, 106.8456)
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(defaultLocation, 13f)
     }
 
+    // --- FIX LOGIKA NAVIGASI KAMERA ---
+    // Kamera hanya akan bergerak jika:
+    // 1. Ada request ID (reportIdToFocus)
+    // 2. Data laporan SUDAH TERSEDIA (uiState.reports tidak kosong)
     LaunchedEffect(reportIdToFocus, uiState.reports) {
-        if (reportIdToFocus != null && uiState.reports.isNotEmpty()) {
-            val target = uiState.reports.find { it.id == reportIdToFocus }
-            if (target != null) {
-                selectedMarker = target
-                cameraPositionState.animate(
-                    CameraUpdateFactory.newLatLngZoom(
-                        LatLng(target.latitude, target.longitude), 17f
+        if (reportIdToFocus != null) {
+            if (uiState.reports.isNotEmpty()) {
+                val target = uiState.reports.find { it.id == reportIdToFocus }
+                if (target != null) {
+                    Log.d("MapScreen", "Fokus ke laporan: ${target.title}")
+                    selectedMarker = target
+                    cameraPositionState.animate(
+                        CameraUpdateFactory.newLatLngZoom(
+                            LatLng(target.getLat(), target.getLng()),
+                            17f
+                        )
                     )
-                )
+                } else {
+                    Log.e("MapScreen", "Laporan dengan ID $reportIdToFocus tidak ditemukan di list")
+                }
+            } else {
+                Log.d("MapScreen", "Menunggu data laporan dimuat...")
             }
         } else {
+            // Jika tidak ada fokus spesifik, cek izin lokasi user
             if (!locationPermissionsState.allPermissionsGranted) {
                 locationPermissionsState.launchMultiplePermissionRequest()
             }
@@ -101,36 +124,47 @@ fun MapScreen(
             uiSettings = MapUiSettings(zoomControlsEnabled = false, myLocationButtonEnabled = false, mapToolbarEnabled = false),
             onMapClick = { selectedMarker = null }
         ) {
+
+            LaunchedEffect(uiState.filteredReports) {
+                Log.d("MapScreen", "🗺️ Rendering markers. Count: ${uiState.filteredReports.size}")
+                uiState.filteredReports.forEach { report ->
+                    Log.d("MapScreen", "   📍 Marker: ${report.title} at (${report.latitude}, ${report.longitude})")
+                }
+            }
             uiState.filteredReports.forEach { report ->
                 val hue = when (report.status) {
                     ReportStatus.BELUM_DITANGANI -> BitmapDescriptorFactory.HUE_RED
                     ReportStatus.DALAM_PROSES -> BitmapDescriptorFactory.HUE_ORANGE
                     ReportStatus.SELESAI -> BitmapDescriptorFactory.HUE_GREEN
                 }
-                Marker(
-                    state = MarkerState(position = LatLng(report.latitude, report.longitude)),
-                    title = report.title,
-                    icon = BitmapDescriptorFactory.defaultMarker(hue),
-                    onClick = {
-                        selectedMarker = report
-                        false
-                    }
-                )
+
+                val lat = report.getLat()
+                val lng = report.getLng()
+
+                if (lat != 0.0 && lng != 0.0) {
+                    Marker(
+                        state = MarkerState(position = LatLng(lat, lng)),
+                        title = report.title,
+                        icon = BitmapDescriptorFactory.defaultMarker(hue),
+                        onClick = {
+                            selectedMarker = report
+                            false
+                        }
+                    )
+                }
             }
         }
 
+        // Header
         AnimatedVisibility(visible = selectedMarker == null, modifier = Modifier.align(Alignment.TopCenter)) {
             Column(modifier = Modifier.fillMaxWidth().systemBarsPadding().padding(top = 16.dp)) {
-                MapHeader(onNotificationClick = onNotificationClick, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp))
+                MapHeader(onNotificationClick, Modifier.fillMaxWidth().padding(horizontal = 16.dp))
                 Spacer(modifier = Modifier.height(12.dp))
-                MapFilterTabs(
-                    selectedTab = selectedTab,
-                    onTabSelected = { viewModel.onTabSelected(it) }, // Panggil fungsi ViewModel
-                    modifier = Modifier.fillMaxWidth()
-                )
+                MapFilterTabs(selectedTab, { viewModel.onTabSelected(it) }, Modifier.fillMaxWidth())
             }
         }
 
+        // Bottom UI
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp).systemBarsPadding()) {
             if (selectedMarker == null) {
                 Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -177,7 +211,7 @@ fun MapScreen(
     }
 }
 
-
+// ... (Helper Components: MapReportPopup, MapHeader, dll JANGAN DIHAPUS, biarkan di bawah sini) ...
 @Composable
 fun MapReportPopup(report: Report, onClose: () -> Unit, onDetailClick: () -> Unit) {
     Surface(
@@ -206,7 +240,7 @@ fun MapReportPopup(report: Report, onClose: () -> Unit, onDetailClick: () -> Uni
                 Icon(Icons.Default.LocationOn, null, tint = COLORS_PRIMARY, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = report.address.ifEmpty { "Lat: ${report.latitude}, Lng: ${report.longitude}" },
+                    text = report.address.ifEmpty { "Lat: ${report.getLat()}" },
                     fontSize = 13.sp, color = COLORS_TEXT_SECONDARY, maxLines = 2
                 )
             }
@@ -219,7 +253,6 @@ fun MapReportPopup(report: Report, onClose: () -> Unit, onDetailClick: () -> Uni
         }
     }
 }
-
 @Composable
 fun MapHeader(
     onNotificationClick: () -> Unit,

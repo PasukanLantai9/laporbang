@@ -21,7 +21,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-// Import Model Asli
 import com.example.laporbang.data.model.Report
 import com.example.laporbang.data.model.ReportStatus
 import com.example.laporbang.presentation.view.auth.COLORS_BG

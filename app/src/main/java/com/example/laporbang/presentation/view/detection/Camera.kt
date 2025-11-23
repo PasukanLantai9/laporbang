@@ -66,8 +66,9 @@ import java.util.Locale
 @Composable
 fun CameraScreen(
     onBackClick: () -> Unit = {},
-    onCapturePhoto: () -> Unit = {},
-    onLocationClick: () -> Unit = {}, // Tambah callback ini
+//    onCapturePhoto: () -> Unit = {},
+    onCapturePhoto: (Double, Double) -> Unit = { _, _ -> },
+    onLocationClick: () -> Unit = {},
     initialLocation: String? = null
 ) {
     val context = LocalContext.current
@@ -80,6 +81,10 @@ fun CameraScreen(
     val previewView = remember { PreviewView(context) }
 
     var currentLocation by remember { mutableStateOf("Mencari lokasi...") }
+    var currentLat by remember { mutableDoubleStateOf(0.0) }
+    var currentLng by remember { mutableDoubleStateOf(0.0) }
+
+//    var currentLocation by remember { mutableStateOf("Mencari lokasi...") }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
     LaunchedEffect(initialLocation) {
         if (initialLocation != null) {
@@ -138,6 +143,9 @@ fun CameraScreen(
             try {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                     if (location != null) {
+                        currentLat = location.latitude
+                        currentLng = location.longitude
+
                         scope.launch(Dispatchers.IO) {
                             val geocoder = Geocoder(context, Locale.getDefault())
                             try {
@@ -209,7 +217,7 @@ fun CameraScreen(
 
         CameraBottomSection(
             onCaptureClick = {
-                onCapturePhoto()
+                onCapturePhoto(currentLat, currentLng)
             },
             onGalleryClick = {
                 galleryLauncher.launch("image/*")

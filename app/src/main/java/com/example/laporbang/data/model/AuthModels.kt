@@ -2,14 +2,15 @@ package com.example.laporbang.data.model
 
 import android.content.IntentSender
 
+
 data class User(
     val uid: String = "",
     val email: String = "",
     val phoneNumber: String = "",
     val displayName: String = "",
+    val role: String = "user",
     val createdAt: Long = System.currentTimeMillis()
 )
-
 sealed class AuthResult {
     data class Success(val user: User, val message: String = "Success") : AuthResult()
 
