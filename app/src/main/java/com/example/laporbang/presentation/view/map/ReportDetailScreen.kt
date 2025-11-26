@@ -15,20 +15,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
 import com.example.laporbang.data.model.ReportStatus
 import com.example.laporbang.presentation.view.auth.COLORS_BG
 import com.example.laporbang.presentation.view.auth.COLORS_PRIMARY
 import com.example.laporbang.presentation.view.auth.COLORS_SURFACE
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT_SECONDARY
+import com.example.laporbang.presentation.view.map.STATUS_RED
+import com.example.laporbang.presentation.view.map.STATUS_YELLOW
+import com.example.laporbang.presentation.view.map.STATUS_GREEN
 import com.example.laporbang.presentation.viewmodel.ReportDetailViewModel
-
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,7 +91,6 @@ fun ReportDetailScreen(
                     }
                 },
                 actions = {
-                    // TOMBOL DELETE (HANYA ADMIN)
                     if (isAdmin) {
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(Icons.Default.Delete, contentDescription = "Delete", tint = STATUS_RED)
@@ -144,16 +147,34 @@ fun ReportDetailScreen(
                         .verticalScroll(rememberScrollState())
                         .padding(16.dp)
                 ) {
-                    // Image Placeholder
-                    Box(
-                        modifier = Modifier.fillMaxWidth().height(220.dp).clip(RoundedCornerShape(16.dp)).background(Color.Gray)
+                    // 1. GAMBAR LAPORAN (UPDATED with COIL)
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().height(220.dp),
+                        elevation = CardDefaults.cardElevation(0.dp)
                     ) {
-                        Icon(painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery), null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(48.dp))
+                        Box(modifier = Modifier.fillMaxSize().background(Color.Gray)) {
+                            if (report!!.imageUrl.isNotEmpty()) {
+                                AsyncImage(
+                                    model = report!!.imageUrl,
+                                    contentDescription = "Foto Laporan",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_gallery),
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.align(Alignment.Center).size(48.dp)
+                                )
+                            }
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // SECTION STATUS (EDITABLE JIKA ADMIN)
+                    // 2. STATUS
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -168,11 +189,9 @@ fun ReportDetailScreen(
                                 ReportStatus.SELESAI -> STATUS_GREEN to "Selesai"
                             }
 
-                            // Chip Status
                             Surface(
                                 color = color.copy(alpha = 0.2f),
                                 shape = RoundedCornerShape(8.dp),
-                                // Jika Admin, bisa diklik untuk ubah status
                                 onClick = { if(isAdmin) showStatusDropdown = true },
                                 enabled = isAdmin
                             ) {
@@ -188,7 +207,6 @@ fun ReportDetailScreen(
                                 }
                             }
 
-                            // DROPDOWN MENU ADMIN
                             DropdownMenu(
                                 expanded = showStatusDropdown,
                                 onDismissRequest = { showStatusDropdown = false },
@@ -196,24 +214,15 @@ fun ReportDetailScreen(
                             ) {
                                 DropdownMenuItem(
                                     text = { Text("Belum Ditangani", color = STATUS_RED) },
-                                    onClick = {
-                                        viewModel.updateStatus(ReportStatus.BELUM_DITANGANI)
-                                        showStatusDropdown = false
-                                    }
+                                    onClick = { viewModel.updateStatus(ReportStatus.BELUM_DITANGANI); showStatusDropdown = false }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Dalam Proses", color = STATUS_YELLOW) },
-                                    onClick = {
-                                        viewModel.updateStatus(ReportStatus.DALAM_PROSES)
-                                        showStatusDropdown = false
-                                    }
+                                    onClick = { viewModel.updateStatus(ReportStatus.DALAM_PROSES); showStatusDropdown = false }
                                 )
                                 DropdownMenuItem(
                                     text = { Text("Selesai", color = STATUS_GREEN) },
-                                    onClick = {
-                                        viewModel.updateStatus(ReportStatus.SELESAI)
-                                        showStatusDropdown = false
-                                    }
+                                    onClick = { viewModel.updateStatus(ReportStatus.SELESAI); showStatusDropdown = false }
                                 )
                             }
                         }
@@ -229,6 +238,8 @@ fun ReportDetailScreen(
                         Box(Modifier.weight(1f)) { DetailInfoCard(icon = Icons.Default.AccessTime, title = "Waktu", content = report!!.getFormattedTime()) }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    // Deskripsi
                     Card(colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text("Deskripsi", color = COLORS_TEXT, fontWeight = FontWeight.Bold, fontSize = 14.sp)
@@ -237,6 +248,8 @@ fun ReportDetailScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(12.dp))
+
+                    // Pelapor
                     Card(colors = CardDefaults.cardColors(containerColor = COLORS_SURFACE), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Box(modifier = Modifier.size(40.dp).clip(CircleShape).background(Color.LightGray))

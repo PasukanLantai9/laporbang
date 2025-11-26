@@ -23,7 +23,6 @@ android {
             useSupportLibrary = true
         }
 
-        // --- PERBAIKAN DI SINI ---
         val keystoreFile = project.rootProject.file("local.properties")
         val properties = Properties()
         if (keystoreFile.exists()) {
@@ -31,9 +30,10 @@ android {
         }
 
         val mapsApiKey = properties.getProperty("MAPS_API_KEY") ?: ""
+        val baseUrl = properties.getProperty("BASE_URL") ?: ""
 
-        // Kirim ke AndroidManifest
         manifestPlaceholders["MAPS_API_KEY"] = mapsApiKey
+        buildConfigField("String", "BASE_URL", baseUrl)
     }
 
     buildTypes {
@@ -53,6 +53,7 @@ android {
         jvmTarget = "1.8"
     }
     buildFeatures {
+        buildConfig = true
         compose = true
     }
     composeOptions {
@@ -115,6 +116,11 @@ dependencies {
     implementation("androidx.camera:camera-view:${cameraxVersion}")
     implementation("androidx.camera:camera-extensions:${cameraxVersion}")
     implementation("com.google.accompanist:accompanist-permissions:0.32.0")
+
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
 
 
 }

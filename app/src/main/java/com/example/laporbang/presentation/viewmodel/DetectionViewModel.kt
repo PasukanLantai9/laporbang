@@ -1,5 +1,7 @@
 package com.example.laporbang.presentation.viewmodel
 
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.laporbang.data.model.Report
@@ -22,10 +24,10 @@ data class DetectionUiState(
     val isFinished: Boolean = false,
     val isUploading: Boolean = false,
     val isUploadSuccess: Boolean = false,
-    val errorMessage: String? = null,
-
     val detectedLabel: String = "",
-    val confidenceScore: Float = 0f
+    val confidenceScore: Float = 0f,
+    val isPotholeFound: Boolean = false,
+    val errorMessage: String? = null
 )
 
 class DetectionViewModel(
@@ -37,54 +39,82 @@ class DetectionViewModel(
 
     var description = MutableStateFlow("")
     var currentLocation = MutableStateFlow("")
+
     private var currentLat = 0.0
     private var currentLng = 0.0
+    private var imageUriString: String = ""
 
     val timestamp: String = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID")).format(Date())
 
-    init {
-        startDetectionProcess()
-    }
+    // Fungsi Utama: Memulai Deteksi
+    fun startDetection(context: Context, uriString: String) {
+        imageUriString = uriString
+        val uri = Uri.parse(uriString)
 
-    private fun startDetectionProcess() {
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(currentStep = 1, progress = 0.2f)
-            delay(1000)
+            // Reset State
+            _uiState.value = DetectionUiState(currentStep = 1, progress = 0.1f)
 
-            _uiState.value = _uiState.value.copy(currentStep = 2, progress = 0.5f)
+            // Step 1: Load Image (Simulasi)
+            delay(800)
+            _uiState.value = _uiState.value.copy(currentStep = 2, progress = 0.4f)
 
-            val result = repository.detectDamage("dummy/path/to/image.jpg")
+            // Step 2: Preprocessing (Simulasi)
+            delay(800)
+            _uiState.value = _uiState.value.copy(currentStep = 3, progress = 0.6f) // Mulai hit API
 
-            delay(500)
+            // Step 3: Hit API Asli
+            val result = repository.detectDamage(context, uri)
 
-            // STEP 4: Selesai & Tampilkan Hasil
+            // Animasi selesai
+            _uiState.value = _uiState.value.copy(progress = 1.0f)
+
             if (result.isSuccess) {
                 val data = result.getOrNull()
-                _uiState.value = _uiState.value.copy(
-                    currentStep = 4,
-                    progress = 1.0f,
-                    isFinished = true,
-                    detectedLabel = "Hasil: ${data?.severity ?: "Terdeteksi"} (${((data?.confidence ?: 0f) * 100).toInt()}%)",
-                    confidenceScore = data?.confidence ?: 0f
-                )
-                if (description.value.isEmpty()) {
-                    description.value = data?.description ?: ""
+
+                if (data != null && data.isPotholeDetected) {
+                    _uiState.value = _uiState.value.copy(
+                        currentStep = 4,
+                        isFinished = true,
+                        isPotholeFound = true,
+                        detectedLabel = "Terdeteksi: ${data.potholeCount} Lubang",
+                    )
+                    if (description.value.isEmpty()) {
+                        description.value = data.description
+                    }
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        currentStep = 4,
+                        isFinished = true,
+                        isPotholeFound = false,
+                        detectedLabel = "Tidak ditemukan lubang",
+                        errorMessage = "Objek tidak terdeteksi sebagai lubang jalan. Laporan tidak dapat dibuat."
+                    )
                 }
             } else {
                 _uiState.value = _uiState.value.copy(
-                    errorMessage = "Gagal mendeteksi lubang. Silakan coba lagi."
+                    currentStep = 4,
+                    isFinished = true,
+                    isPotholeFound = false,
+                    detectedLabel = "Gagal Analisis",
+                    errorMessage = result.exceptionOrNull()?.message ?: "Terjadi kesalahan server"
                 )
             }
         }
     }
 
     fun setLocation(address: String, lat: Double, lng: Double) {
-        currentLocation.value = address
-        currentLat = lat
-        currentLng = lng
+        if (currentLocation.value.isEmpty() || currentLocation.value != address) {
+            currentLocation.value = address
+            currentLat = lat
+            currentLng = lng
+        }
     }
 
     fun uploadReport() {
+        // Cegah upload jika tidak valid
+        if (!_uiState.value.isPotholeFound) return
+
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isUploading = true)
 
@@ -98,7 +128,7 @@ class DetectionViewModel(
                 status = ReportStatus.BELUM_DITANGANI,
                 reporterName = "User LaporBang",
                 createdAt = Timestamp.now(),
-                imageUrl = ""
+                imageUrl = imageUriString
             )
 
             val result = repository.addReport(newReport)
@@ -108,7 +138,7 @@ class DetectionViewModel(
             } else {
                 _uiState.value = _uiState.value.copy(
                     isUploading = false,
-                    errorMessage = result.exceptionOrNull()?.message ?: "Gagal mengunggah"
+                    errorMessage = result.exceptionOrNull()?.message
                 )
             }
         }

@@ -17,6 +17,8 @@ import com.example.laporbang.presentation.view.detection.DetectionResultScreen
 import com.example.laporbang.presentation.view.detection.LocationPickerScreen
 import com.example.laporbang.presentation.view.detection.ReportSuccessScreen
 import com.example.laporbang.presentation.view.map.ReportListScreen
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 
 @Composable
 fun SetupNavGraph(navController: NavHostController) {
@@ -24,7 +26,6 @@ fun SetupNavGraph(navController: NavHostController) {
         navController = navController,
         startDestination = Screen.Splash.route
     ) {
-        // --- SPLASH & AUTH ---
         composable(route = Screen.Splash.route) {
             AnimatedSplashScreen(navController = navController)
         }
@@ -130,20 +131,19 @@ fun SetupNavGraph(navController: NavHostController) {
             val savedStateHandle = backStackEntry.savedStateHandle
             val selectedLocation = savedStateHandle.get<String>("location_address")
 
-
             CameraScreen(
                 onBackClick = { navController.popBackStack() },
-
-                // UPDATE DISINI: Menerima lat, lng dari CameraScreen
-                onCapturePhoto = { lat, lng ->
+                onCapturePhoto = { imageUri, lat, lng ->
                     val lokasiNama = selectedLocation ?: "Lokasi Saat Ini"
 
-                    // Simpan data Lat/Lng ASLI ke SavedStateHandle
+                    val encodedUri = URLEncoder.encode(imageUri, StandardCharsets.UTF_8.toString())
+
                     navController.currentBackStackEntry?.savedStateHandle?.set("lat", lat)
                     navController.currentBackStackEntry?.savedStateHandle?.set("lng", lng)
 
-                    // Pindah ke layar deteksi
-                    navController.navigate(Screen.DetectionResult.createRoute(lokasiNama))
+                    navController.navigate(
+                        Screen.DetectionResult.createRoute(lokasiNama, encodedUri)
+                    )
                 },
                 onLocationClick = { navController.navigate(Screen.LocationPicker.route) },
                 initialLocation = selectedLocation
@@ -152,9 +152,13 @@ fun SetupNavGraph(navController: NavHostController) {
 
         composable(
             route = Screen.DetectionResult.route,
-            arguments = listOf(navArgument("location") { defaultValue = "" })
+            arguments = listOf(
+                navArgument("location") { defaultValue = "" },
+                navArgument("imageUri") { defaultValue = "" }
+            )
         ) { backStackEntry ->
             val initialLocation = backStackEntry.arguments?.getString("location") ?: ""
+            val imageUriArg = backStackEntry.arguments?.getString("imageUri") ?: ""
 
             val lat = navController.previousBackStackEntry?.savedStateHandle?.get<Double>("lat") ?: 0.0
             val lng = navController.previousBackStackEntry?.savedStateHandle?.get<Double>("lng") ?: 0.0
@@ -172,6 +176,7 @@ fun SetupNavGraph(navController: NavHostController) {
                 initialLocation = finalLocation,
                 initialLat = finalLat,
                 initialLng = finalLng,
+                imageUriString = imageUriArg,
                 onBackClick = { navController.popBackStack() },
                 onChangeLocationClick = { navController.navigate(Screen.LocationPicker.route) },
                 onUploadSuccess = {

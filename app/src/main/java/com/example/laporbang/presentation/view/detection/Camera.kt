@@ -1,11 +1,11 @@
 package com.example.laporbang.presentation.view.detection
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.Context
 import android.location.Geocoder
 import android.net.Uri
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
@@ -60,14 +60,15 @@ import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Locale
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen(
     onBackClick: () -> Unit = {},
-//    onCapturePhoto: () -> Unit = {},
-    onCapturePhoto: (Double, Double) -> Unit = { _, _ -> },
+    onCapturePhoto: (String, Double, Double) -> Unit = { _, _, _ -> },
     onLocationClick: () -> Unit = {},
     initialLocation: String? = null
 ) {
@@ -84,8 +85,8 @@ fun CameraScreen(
     var currentLat by remember { mutableDoubleStateOf(0.0) }
     var currentLng by remember { mutableDoubleStateOf(0.0) }
 
-//    var currentLocation by remember { mutableStateOf("Mencari lokasi...") }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
     LaunchedEffect(initialLocation) {
         if (initialLocation != null) {
             currentLocation = initialLocation
@@ -104,11 +105,12 @@ fun CameraScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-
-            Log.d("CameraScreen", "Foto dari galeri: $uri")
+            // Jika ambil dari galeri, kirim URI-nya
+            onCapturePhoto(uri.toString(), currentLat, currentLng)
         }
     }
 
+    // Setup Camera
     LaunchedEffect(lensFacing, permissionsState.allPermissionsGranted) {
         if (permissionsState.allPermissionsGranted) {
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
@@ -145,7 +147,6 @@ fun CameraScreen(
                     if (location != null) {
                         currentLat = location.latitude
                         currentLng = location.longitude
-
                         scope.launch(Dispatchers.IO) {
                             val geocoder = Geocoder(context, Locale.getDefault())
                             try {
@@ -172,23 +173,39 @@ fun CameraScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black)
-    ) {
+    // Helper function untuk ambil foto
+    fun takePhoto() {
+        val name = SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
+            .format(System.currentTimeMillis())
+
+        // Simpan file di cache aplikasi
+        val photoFile = File(context.cacheDir, "$name.jpg")
+
+        val outputOptions = ImageCapture.OutputFileOptions.Builder(photoFile).build()
+
+        imageCapture.takePicture(
+            outputOptions,
+            ContextCompat.getMainExecutor(context),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onError(exc: ImageCaptureException) {
+                    Log.e("CameraScreen", "Photo capture failed: ${exc.message}", exc)
+                    Toast.makeText(context, "Gagal mengambil foto", Toast.LENGTH_SHORT).show()
+                }
+
+                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val savedUri = Uri.fromFile(photoFile)
+                    // KIRIM URI HASIL FOTO KE NAVGRAPH
+                    onCapturePhoto(savedUri.toString(), currentLat, currentLng)
+                }
+            }
+        )
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         if (permissionsState.allPermissionsGranted) {
-            AndroidView(
-                factory = { previewView },
-                modifier = Modifier.fillMaxSize()
-            )
+            AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
         } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(COLORS_BG),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxSize().background(COLORS_BG), contentAlignment = Alignment.Center) {
                 Text("Mohon izinkan akses kamera & lokasi", color = Color.White)
             }
         }
@@ -201,37 +218,19 @@ fun CameraScreen(
                 flashMode = if (flashMode == ImageCapture.FLASH_MODE_OFF) ImageCapture.FLASH_MODE_ON else ImageCapture.FLASH_MODE_OFF
                 imageCapture.flashMode = flashMode
             },
-            onLocationClick = onLocationClick, // Pass callback
+            onLocationClick = onLocationClick,
             modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter).padding(top = 40.dp)
         )
 
-
-        // FRAME OVERLAY
-        CameraFrameOverlay(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 32.dp)
-                .aspectRatio(1f)
-                .offset(y = (-50).dp)
-        )
+        CameraFrameOverlay(modifier = Modifier.align(Alignment.Center).padding(horizontal = 32.dp).aspectRatio(1f).offset(y = (-50).dp))
 
         CameraBottomSection(
-            onCaptureClick = {
-                onCapturePhoto(currentLat, currentLng)
-            },
-            onGalleryClick = {
-                galleryLauncher.launch("image/*")
-            },
+            onCaptureClick = { takePhoto() }, // Panggil fungsi takePhoto
+            onGalleryClick = { galleryLauncher.launch("image/*") },
             onFlipCameraClick = {
-                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                    CameraSelector.LENS_FACING_FRONT
-                } else {
-                    CameraSelector.LENS_FACING_BACK
-                }
+                lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
             },
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
+            modifier = Modifier.fillMaxWidth().align(Alignment.BottomCenter)
         )
     }
 }

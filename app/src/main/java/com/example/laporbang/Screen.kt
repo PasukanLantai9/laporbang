@@ -19,9 +19,9 @@
 
         object CreateReport : Screen("create_report_screen")
         object LocationPicker : Screen("location_picker_screen")
-        object DetectionResult : Screen("detection_result_screen?location={location}") {
-            fun createRoute(location: String): String {
-                return "detection_result_screen?location=$location"
+        object DetectionResult : Screen("detection_result_screen?location={location}&imageUri={imageUri}") {
+            fun createRoute(location: String, imageUri: String = ""): String {
+                return "detection_result_screen?location=$location&imageUri=$imageUri"
             }
         }
         object ReportSuccess : Screen("report_success_screen")

@@ -17,21 +17,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import com.example.laporbang.presentation.view.auth.COLORS_BG
 import com.example.laporbang.presentation.view.auth.COLORS_PRIMARY
 import com.example.laporbang.presentation.view.auth.COLORS_SURFACE
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT
 import com.example.laporbang.presentation.view.auth.COLORS_TEXT_SECONDARY
 import com.example.laporbang.presentation.viewmodel.DetectionViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import com.example.laporbang.presentation.viewmodel.DetectionUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,30 +40,30 @@ fun DetectionResultScreen(
     initialLocation: String,
     initialLat: Double = 0.0,
     initialLng: Double = 0.0,
+    imageUriString: String = "", // Parameter URI Foto
     onBackClick: () -> Unit,
     onChangeLocationClick: () -> Unit,
     onUploadSuccess: () -> Unit,
-    viewModel: DetectionViewModel = viewModel(key = "detection_$initialLat$initialLng")
+    viewModel: DetectionViewModel = viewModel()
 ) {
+    val context = LocalContext.current
+
     val uiState by viewModel.uiState.collectAsState()
     val description by viewModel.description.collectAsState()
     val displayLocation by viewModel.currentLocation.collectAsState()
-
     val animatedProgress by animateFloatAsState(targetValue = uiState.progress, label = "progress")
 
-    val timestamp = remember {
-        val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale("id", "ID"))
-        sdf.format(Date())
-    }
-
-    LaunchedEffect(Unit) {
-        android.util.Log.d("DetectionResultScreen", "   initialLocation: $initialLocation")
-        android.util.Log.d("DetectionResultScreen", "   initialLat: $initialLat")
-        android.util.Log.d("DetectionResultScreen", "   initialLng: $initialLng")
-
+    LaunchedEffect(initialLocation) {
         viewModel.setLocation(initialLocation, initialLat, initialLng)
     }
 
+    LaunchedEffect(imageUriString) {
+        if (imageUriString.isNotEmpty() && uiState.currentStep == 0) {
+            viewModel.startDetection(context, imageUriString)
+        }
+    }
+
+    // 3. Handle Upload Sukses
     LaunchedEffect(uiState.isUploadSuccess) {
         if (uiState.isUploadSuccess) {
             onUploadSuccess()
@@ -90,12 +91,23 @@ fun DetectionResultScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     if (uiState.isFinished) {
+                        if (uiState.errorMessage != null) {
+                            Text(
+                                text = uiState.errorMessage ?: "",
+                                color = Color(0xFFEF4444),
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            )
+                        }
                         Button(
                             onClick = { viewModel.uploadReport() },
                             modifier = Modifier.fillMaxWidth().height(50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = COLORS_PRIMARY),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (uiState.isPotholeFound) COLORS_PRIMARY else Color.Gray
+                            ),
                             shape = RoundedCornerShape(12.dp),
-                            enabled = !uiState.isUploading
+                            enabled = uiState.isPotholeFound && !uiState.isUploading // Disable jika bukan lubang
                         ) {
                             if (uiState.isUploading) {
                                 CircularProgressIndicator(color = COLORS_BG, modifier = Modifier.size(24.dp))
@@ -127,14 +139,23 @@ fun DetectionResultScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Image Preview
             Card(
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().height(250.dp),
                 elevation = CardDefaults.cardElevation(8.dp)
             ) {
                 Box(modifier = Modifier.fillMaxSize().background(Color.Gray)) {
-                    Icon(painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_camera), null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(64.dp))
+                    if (imageUriString.isNotEmpty()) {
+                        AsyncImage(
+                            model = imageUriString,
+                            contentDescription = "Preview",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_camera), null, tint = Color.White, modifier = Modifier.align(Alignment.Center).size(64.dp))
+                    }
+
                     Box(modifier = Modifier.align(Alignment.Center).size(150.dp).border(2.dp, COLORS_PRIMARY, RoundedCornerShape(8.dp)))
                 }
             }
@@ -147,16 +168,24 @@ fun DetectionResultScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Icon Status (Berubah warna jika gagal/berhasil)
+                    val statusColor = when {
+                        !uiState.isFinished -> COLORS_PRIMARY.copy(alpha = 0.2f)
+                        uiState.isPotholeFound -> Color(0xFF10B981) // Hijau (Sukses)
+                        else -> Color(0xFFEF4444) // Merah (Bukan Lubang)
+                    }
+
+                    val statusIcon = when {
+                        !uiState.isFinished -> Icons.Default.Search
+                        uiState.isPotholeFound -> Icons.Default.Check
+                        else -> Icons.Default.Close
+                    }
+
                     Box(
-                        modifier = Modifier.size(60.dp).clip(CircleShape).background(if (uiState.isFinished) Color(0xFF10B981) else COLORS_PRIMARY.copy(alpha = 0.2f)),
+                        modifier = Modifier.size(60.dp).clip(CircleShape).background(statusColor),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (uiState.isFinished) Icons.Default.Check else Icons.Default.Search,
-                            contentDescription = null,
-                            tint = if (uiState.isFinished) Color.White else COLORS_PRIMARY,
-                            modifier = Modifier.size(30.dp)
-                        )
+                        Icon(imageVector = statusIcon, contentDescription = null, tint = Color.White, modifier = Modifier.size(30.dp))
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -166,7 +195,7 @@ fun DetectionResultScreen(
                         fontSize = 18.sp, fontWeight = FontWeight.Bold, color = COLORS_TEXT
                     )
                     Text(
-                        text = if (uiState.isFinished) "Kerusakan jalan berhasil diidentifikasi." else "Menganalisis gambar untuk\nmengidentifikasi kerusakan jalan",
+                        text = if (uiState.isFinished) "Proses analisis gambar telah selesai." else "Menganalisis gambar untuk\nmengidentifikasi kerusakan jalan",
                         fontSize = 13.sp, color = COLORS_TEXT_SECONDARY, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 4.dp)
                     )
 
@@ -185,19 +214,25 @@ fun DetectionResultScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
+
                     DetectionStepItem("Memuat gambar", if (uiState.currentStep > 1) StepState.DONE else if (uiState.currentStep == 1) StepState.LOADING else StepState.WAITING)
                     DetectionStepItem("Preprocessing gambar", if (uiState.currentStep > 2) StepState.DONE else if (uiState.currentStep == 2) StepState.LOADING else StepState.WAITING)
                     DetectionStepItem("Analisis AI", if (uiState.currentStep > 3) StepState.DONE else if (uiState.currentStep == 3) StepState.LOADING else StepState.WAITING)
 
                     AnimatedVisibility(visible = uiState.isFinished) {
                         Column(modifier = Modifier.padding(top = 12.dp)) {
-                            DetectionStepItem(uiState.detectedLabel, StepState.DONE, isResult = true)
+
+                            DetectionStepItem(
+                                label = uiState.detectedLabel.ifEmpty { "Analisis Selesai" },
+                                state = if(uiState.isPotholeFound) StepState.DONE else StepState.ERROR,
+                                isResult = true
+                            )
                         }
                     }
                 }
             }
 
-            AnimatedVisibility(visible = uiState.isFinished) {
+            AnimatedVisibility(visible = uiState.isFinished && uiState.isPotholeFound) {
                 Column {
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -244,31 +279,19 @@ fun DetectionResultScreen(
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text("Waktu Pelaporan", fontSize = 12.sp, color = COLORS_TEXT_SECONDARY)
-                                Text(text = timestamp, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = COLORS_TEXT)
+                                Text(text = viewModel.timestamp, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = COLORS_TEXT)
                             }
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1E3A8A).copy(alpha = 0.3f)), border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.5f)), modifier = Modifier.fillMaxWidth()) {
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Info, null, tint = Color(0xFF60A5FA), modifier = Modifier.size(24.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text("Tips Deteksi", fontWeight = FontWeight.Bold, color = Color(0xFF93C5FD))
-                        Text("Pastikan pencahayaan cukup dan ambil gambar dari jarak 1-2 meter agar hasil akurat.", fontSize = 12.sp, color = Color(0xFFBFDBFE))
-                    }
-                }
-            }
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
 }
 
-enum class StepState { WAITING, LOADING, DONE }
+enum class StepState { WAITING, LOADING, DONE, ERROR }
 
 @Composable
 fun DetectionStepItem(label: String, state: StepState, isResult: Boolean = false) {
@@ -277,8 +300,9 @@ fun DetectionStepItem(label: String, state: StepState, isResult: Boolean = false
             StepState.DONE -> Icon(Icons.Default.CheckCircle, null, tint = if(isResult) COLORS_PRIMARY else Color(0xFF10B981), modifier = Modifier.size(20.dp))
             StepState.LOADING -> CircularProgressIndicator(modifier = Modifier.size(16.dp), color = COLORS_PRIMARY, strokeWidth = 2.dp)
             StepState.WAITING -> Icon(painter = androidx.compose.ui.res.painterResource(android.R.drawable.ic_menu_help), null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+            StepState.ERROR -> Icon(Icons.Default.Close, null, tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
         }
         Spacer(modifier = Modifier.width(12.dp))
-        Text(text = label, color = if (state == StepState.WAITING) Color.Gray else COLORS_TEXT, fontSize = 14.sp, fontWeight = if(isResult) FontWeight.Bold else FontWeight.Normal)
+        Text(text = label, color = if (state == StepState.WAITING) Color.Gray else if(state == StepState.ERROR) Color(0xFFEF4444) else COLORS_TEXT, fontSize = 14.sp, fontWeight = if(isResult) FontWeight.Bold else FontWeight.Normal)
     }
 }

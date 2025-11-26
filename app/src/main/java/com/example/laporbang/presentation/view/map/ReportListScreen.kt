@@ -16,11 +16,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage // Import Coil
 import com.example.laporbang.data.model.Report
 import com.example.laporbang.data.model.ReportStatus
 import com.example.laporbang.presentation.view.auth.COLORS_BG
@@ -119,12 +121,22 @@ fun ReportListItem(report: Report, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(modifier = Modifier.padding(12.dp)) {
+            // Thumbnail (UPDATED with COIL)
             Box(
                 modifier = Modifier
                     .size(80.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Gray) // Placeholder Image
-            )
+                    .background(Color.Gray)
+            ) {
+                if (report.imageUrl.isNotEmpty()) {
+                    AsyncImage(
+                        model = report.imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.width(12.dp))
 
